@@ -8,8 +8,11 @@ SERVER_AK = "j44ZAQiQcNRl4IfSAA2DqTeWyWCQkjKg"  # 服务端类型应用
 BROWSER_AK = "F2h8URNdw483r3LQXY7xE1Q8hknD1dRy"  # 浏览器端类型应用
 DIRECTION_API_URL = "https://api.map.baidu.com/direction/v2/driving"
 
-password = st.text_input("输入密码", type="password")
-correct_password = st.secrets["PASSWORD"]  # 密码存储在Secrets中
+# 测试 Secrets 是否生效
+st.write("密码是否加载:", "PASSWORD" in st.secrets)  # 应该显示 True
+
+# 原有代码
+correct_password = st.secrets["PASSWORD"]
 
 if password != correct_password:
     st.error("密码错误")
