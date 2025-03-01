@@ -8,22 +8,6 @@ SERVER_AK = "j44ZAQiQcNRl4IfSAA2DqTeWyWCQkjKg"  # 服务端类型应用
 BROWSER_AK = "F2h8URNdw483r3LQXY7xE1Q8hknD1dRy"  # 浏览器端类型应用
 DIRECTION_API_URL = "https://api.map.baidu.com/direction/v2/driving"
 
-st.write("所有 Secrets 键名:", list(st.secrets.keys()))
-st.write("PASSWORD 的值是否存在:", "PASSWORD" in st.secrets)
-
-if "PASSWORD" not in st.secrets:
-    st.error("❌ Secrets 未正确配置，请检查云端设置！")
-    st.stop()
-
-password = st.text_input("请输入密码", type="password")
-correct_password = st.secrets["PASSWORD"]
-
-if password != correct_password:
-    st.error("密码错误")
-    st.stop()
-
-st.success("✅ 密码正确！")
-
 # 以下是应用的正式内容
 st.write("欢迎访问受保护的应用！")
 def get_driving_route(origin_lng, origin_lat, dest_lng, dest_lat):
