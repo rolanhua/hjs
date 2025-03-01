@@ -11,12 +11,20 @@ DIRECTION_API_URL = "https://api.map.baidu.com/direction/v2/driving"
 # 测试 Secrets 是否生效
 st.write("密码是否加载:", "hjswl123" in st.secrets)  # 应该显示 True
 
-# 原有代码
-correct_password = st.secrets["hjswl123"]
+if "PASSWORD" not in st.secrets:
+    st.error("❌ Secrets 未正确配置，请检查云端设置！")
+    st.stop()
+
+# 密码验证逻辑
+password = st.text_input("请输入密码", type="password")
+correct_password = st.secrets["PASSWORD"]
 
 if password != correct_password:
     st.error("密码错误")
-    st.stop()  # 停止执行后续代码
+    st.stop()
+
+# 密码正确后的逻辑
+st.success("密码正确！")
 
 # 以下是应用的正式内容
 st.write("欢迎访问受保护的应用！")
