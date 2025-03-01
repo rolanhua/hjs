@@ -7,9 +7,13 @@ from streamlit.components.v1 import html
 SERVER_AK = "j44ZAQiQcNRl4IfSAA2DqTeWyWCQkjKg"  # 服务端类型应用
 BROWSER_AK = "F2h8URNdw483r3LQXY7xE1Q8hknD1dRy"  # 浏览器端类型应用
 DIRECTION_API_URL = "https://api.map.baidu.com/direction/v2/driving"
+# 输出所有 secrets 键名
 st.write("所有 Secrets 键名:", list(st.secrets.keys()))
+
+# 检查密码是否存在
 st.write("PASSWORD 的值是否存在:", "PASSWORD" in st.secrets)
 
+# 检查密码是否正确
 if "PASSWORD" not in st.secrets:
     st.error("❌ Secrets 未正确配置，请检查云端设置！")
     st.stop()
