@@ -9,7 +9,7 @@ BROWSER_AK = "F2h8URNdw483r3LQXY7xE1Q8hknD1dRy"  # 浏览器端类型应用
 DIRECTION_API_URL = "https://api.map.baidu.com/direction/v2/driving"
 
 # 测试 Secrets 是否生效
-st.write("密码是否加载:", "hjswl123" in st.secrets)  # 应该显示 True
+st.write("密码是否加载:", "PASSWORD" in st.secrets)  # 应该显示 True
 
 if "PASSWORD" not in st.secrets:
     st.error("❌ Secrets 未正确配置，请检查云端设置！")
