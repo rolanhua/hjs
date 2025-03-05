@@ -175,7 +175,6 @@ def main():
         # 显示数据摘要
         st.success(f"✅ 成功加载 {len(df)} 条门店数据")
 
-
     except FileNotFoundError:
         st.error(f"文件未找到：{st.session_state.file_path}，请检查："
                  f"\n1. 文件是否存在于项目根目录"
