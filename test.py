@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from streamlit.components.v1 import html
-
+import os
 # 百度地图配置
 SERVER_AK = "j44ZAQiQcNRl4IfSAA2DqTeWyWCQkjKg"  # 服务端类型应用
 BROWSER_AK = "F2h8URNdw483r3LQXY7xE1Q8hknD1dRy"  # 浏览器端类型应用
@@ -121,139 +121,193 @@ def generate_baidu_map_html(store_list, path_points):
 
 def main():
     st.title("门店驾驶距离计算系统")
-    uploaded_file = st.file_uploader("上传门店数据文件（CSV/Excel）", type=["csv", "xlsx"])
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-        required_cols = ['门店编码', '门店名称', 'latitude', 'longitude', '区域']
-        if not all(col in df.columns for col in required_cols):
-            st.error("文件缺少必要列")
-            return
-        df.fillna("未知", inplace=True)
-        st.session_state.df = df
-        st.success(f"成功加载 {len(df)} 家门店数据")
+    # 获取当前文件所在目录的绝对路径
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DEFAULT_PATH = os.path.join(BASE_DIR, "门店详情.xlsx")
 
+    # 初始化session_state配置
+    if 'file_path' not in st.session_state:
+        st.session_state.file_path = DEFAULT_PATH  # 设置默认路径
+
+    # 路径配置区域（保留用于调试）
+    with st.expander("高级配置", expanded=False):
+        new_path = st.text_input(
+            "数据文件路径（开发人员用）",
+            value=st.session_state.file_path,
+            help=f"当前默认路径：{DEFAULT_PATH}"
+        )
+        if st.button("更新路径"):
+            st.session_state.file_path = new_path
+            st.session_state.pop('df', None)  # 清除缓存数据
+            st.success("路径已更新")
+
+    # 使用缓存装饰器优化文件读取
+    @st.cache_data
+    def load_data(file_path):
+        # 自动识别文件类型
+        if file_path.endswith('.csv'):
+            return pd.read_csv(file_path)
+        else:
+            return pd.read_excel(file_path)
+
+    # 主数据处理流程
+    try:
+        if 'df' not in st.session_state:
+            # 首次加载时显示加载状态
+            with st.spinner(f'正在加载数据文件：{st.session_state.file_path}'):
+                df = load_data(st.session_state.file_path)
+
+                # 数据验证
+                required_cols = ['门店编码', '门店名称', 'latitude', 'longitude', '区域']
+                missing_cols = [col for col in required_cols if col not in df.columns]
+                if missing_cols:
+                    st.error(f"缺少必要字段：{', '.join(missing_cols)}")
+                    st.stop()
+
+                # 数据清洗
+                df = df.dropna(subset=['latitude', 'longitude'])  # 坐标不能为空
+                df.fillna({'区域': '未知'}, inplace=True)
+
+                st.session_state.df = df
+
+        df = st.session_state.df
+
+        # 显示数据摘要
+        st.success(f"✅ 成功加载 {len(df)} 条门店数据")
+
+
+    except FileNotFoundError:
+        st.error(f"文件未找到：{st.session_state.file_path}，请检查："
+                 f"\n1. 文件是否存在于项目根目录"
+                 f"\n2. 文件名是否准确"
+                 f"\n3. 文件扩展名是否正确")
+    except PermissionError:
+        st.error("文件访问被拒绝，请检查文件权限设置")
+    except Exception as e:
+        st.error(f"数据加载失败：{str(e)}")
+        st.stop()
         # 选择业务类型
-        business_type = st.selectbox("选择业务类型", options=["常温", "冷链"])
+    business_type = st.selectbox("选择业务类型", options=["常温", "冷链"])
 
-        # 根据业务类型选择不同的路线
-        if business_type == "常温":
-            st.subheader("选择常温配送路线")
+    # 根据业务类型选择不同的路线
+    if business_type == "常温":
+        st.subheader("选择常温配送路线")
 
-            # 获取所有区域
-            valid_regions = df['区域'].unique().tolist()
+        # 获取所有区域
+        valid_regions = df['区域'].unique().tolist()
 
-            # 允许用户选择多个区域
-            selected_regions = st.multiselect("选择区域", options=valid_regions, default=valid_regions[0])
+        # 允许用户选择多个区域
+        selected_regions = st.multiselect("选择区域", options=valid_regions, default=valid_regions[0])
 
-            # 根据选择的区域筛选门店
-            stores_in_selected_regions = df[df['区域'].isin(selected_regions)]
-            store_names = stores_in_selected_regions['门店名称'].unique().tolist()
+        # 根据选择的区域筛选门店
+        stores_in_selected_regions = df[df['区域'].isin(selected_regions)]
+        store_names = stores_in_selected_regions['门店名称'].unique().tolist()
 
-            # 确保“仓库”始终在门店列表中，即使它不属于所选区域
-            if "仓库" not in store_names:
-                store_names.append("仓库")
+        # 确保“仓库”始终在门店列表中，即使它不属于所选区域
+        if "仓库" not in store_names:
+            store_names.append("仓库")
 
-            # 确保“仓库”始终在默认值中
-            default_stores = ["仓库"]
+        # 确保“仓库”始终在默认值中
+        default_stores = ["仓库"]
 
-            # 选择门店（默认包含仓库）
-            selected_stores = st.multiselect("选择门店", store_names, default=default_stores)
+        # 选择门店（默认包含仓库）
+        selected_stores = st.multiselect("选择门店", store_names, default=default_stores)
 
-            # 过滤选择的门店
-            filtered_stores = stores_in_selected_regions[stores_in_selected_regions['门店名称'].isin(selected_stores)]
+        # 过滤选择的门店
+        filtered_stores = stores_in_selected_regions[stores_in_selected_regions['门店名称'].isin(selected_stores)]
 
-            # 如果“仓库”被选中但不在当前区域中，手动添加它
-            if "仓库" in selected_stores and "仓库" not in filtered_stores['门店名称'].values:
-                warehouse_row = df[df['门店名称'] == "仓库"].iloc[0]  # 假设“仓库”在数据中是唯一的
-                filtered_stores = pd.concat([pd.DataFrame([warehouse_row]), filtered_stores], ignore_index=True)
+        # 如果“仓库”被选中但不在当前区域中，手动添加它
+        if "仓库" in selected_stores and "仓库" not in filtered_stores['门店名称'].values:
+            warehouse_row = df[df['门店名称'] == "仓库"].iloc[0]  # 假设“仓库”在数据中是唯一的
+            filtered_stores = pd.concat([pd.DataFrame([warehouse_row]), filtered_stores], ignore_index=True)
 
-            # 按用户选择顺序排序
-            sorted_stores = filtered_stores.copy()
-            sorted_stores['配送序号'] = sorted_stores['门店名称'].apply(lambda x: selected_stores.index(x))
-            sorted_stores = sorted_stores.sort_values(by='配送序号')
+        # 按用户选择顺序排序
+        sorted_stores = filtered_stores.copy()
+        sorted_stores['配送序号'] = sorted_stores['门店名称'].apply(lambda x: selected_stores.index(x))
+        sorted_stores = sorted_stores.sort_values(by='配送序号')
 
-        elif business_type == "冷链":
-            st.subheader("选择冷链路线号")
-            if '冷链路线' in df.columns:
-                df['冷链路线'] = df['冷链路线'].fillna('')  # 将NaN替换为空字符串
-                valid_routes = [route for route in df['冷链路线'].unique() if route not in ['', '未知']]  # 过滤掉空值和"未知"路线
+    elif business_type == "冷链":
+        st.subheader("选择冷链路线号")
+        if '冷链路线' in df.columns:
+            df['冷链路线'] = df['冷链路线'].fillna('')  # 将NaN替换为空字符串
+            valid_routes = [route for route in df['冷链路线'].unique() if route not in ['', '未知']]  # 过滤掉空值和"未知"路线
 
-                # 添加选择框
-                if len(valid_routes) > 0:
-                    cold_chain_route = st.selectbox(
-                        "选择冷链路线号：",
-                        options=valid_routes,  # 只显示有效路线
-                        index=0  # 默认选中第一个有效选项
-                    )
-
-                    # 根据选择的冷链路线过滤门店
-                    stores_in_selected_route = df[df['冷链路线'] == cold_chain_route]
-                    store_names = stores_in_selected_route['门店名称'].unique().tolist()
-
-                    # 确保“仓库”始终在门店列表中，即使它不属于所选冷链路线
-                    if "仓库" not in store_names:
-                        store_names.append("仓库")
-
-                    # 默认选择“仓库”加该冷链路线下的所有门店
-                    default_stores = ["仓库"] + store_names
-
-                    # 选择门店（默认包含仓库）
-                    selected_stores = st.multiselect("选择门店", store_names, default=default_stores)
-
-                    # 过滤选择的门店
-                    filtered_stores = stores_in_selected_route[stores_in_selected_route['门店名称'].isin(selected_stores)]
-
-                    # 如果“仓库”被选中但不在当前冷链路线中，手动添加它
-                    if "仓库" in selected_stores and "仓库" not in filtered_stores['门店名称'].values:
-                        warehouse_row = df[df['门店名称'] == "仓库"].iloc[0]  # 假设“仓库”在数据中是唯一的
-                        filtered_stores['冷链送货序号'] = pd.to_numeric(filtered_stores['冷链送货序号'],
-                                                                        errors='coerce')
-                        sorted_stores = filtered_stores.sort_values(by='冷链送货序号')
-                    # 排序处理（冷链按冷链送货序号排序）
-                    if '冷链送货序号' in filtered_stores.columns:
-                        sorted_stores = filtered_stores.sort_values(by='冷链送货序号')
-                    else:
-                        sorted_stores = filtered_stores
-                        st.info("数据中缺少冷链送货序号字段，使用原始排序")
-
-                else:
-                    st.warning("没有可用的冷链路线数据")
-                    filtered_stores = df  # 显示全部数据
-            else:
-                st.warning("当前数据中未包含冷链路线信息")
-                filtered_stores = df  # 显示全部数据
-
-            # 添加仓库到门店列表
-            warehouse = df[df['门店名称'] == "仓库"].iloc[0]
-            sorted_stores = pd.concat([warehouse.to_frame().T, sorted_stores], ignore_index=True)
-
-        # 显示门店列表
-        st.subheader("门店列表")
-        st.dataframe(sorted_stores[['门店名称', 'latitude', 'longitude']])
-
-        # 计算路径
-        if len(sorted_stores) > 1:
-            path_points, total_distance, total_duration = [], 0, 0
-            for i in range(len(sorted_stores) - 1):
-                store1, store2 = sorted_stores.iloc[i], sorted_stores.iloc[i + 1]
-                route_data = get_driving_route(
-                    store1['longitude'], store1['latitude'],
-                    store2['longitude'], store2['latitude']
+            # 添加选择框
+            if len(valid_routes) > 0:
+                cold_chain_route = st.selectbox(
+                    "选择冷链路线号：",
+                    options=valid_routes,  # 只显示有效路线
+                    index=0  # 默认选中第一个有效选项
                 )
-                if route_data:
-                    path_points.extend(route_data['processed_path'])
-                    total_distance += route_data['distance']
-                    total_duration += route_data['duration']
 
-            # 添加路径点总数检查
-            if len(path_points) == 0:
-                st.error("警告：未获取到任何路径点，请检查坐标数据")
+                # 根据选择的冷链路线过滤门店
+                stores_in_selected_route = df[df['冷链路线'] == cold_chain_route]
+                store_names = stores_in_selected_route['门店名称'].unique().tolist()
+
+                # 确保“仓库”始终在门店列表中，即使它不属于所选冷链路线
+                if "仓库" not in store_names:
+                    store_names.append("仓库")
+
+                # 默认选择“仓库”加该冷链路线下的所有门店
+                default_stores = ["仓库"] + store_names
+
+                # 选择门店（默认包含仓库）
+                selected_stores = st.multiselect("选择门店", store_names, default=default_stores)
+
+                # 过滤选择的门店
+                filtered_stores = stores_in_selected_route[stores_in_selected_route['门店名称'].isin(selected_stores)]
+
+                # 如果“仓库”被选中但不在当前冷链路线中，手动添加它
+                if "仓库" in selected_stores and "仓库" not in filtered_stores['门店名称'].values:
+                    warehouse_row = df[df['门店名称'] == "仓库"].iloc[0]  # 假设“仓库”在数据中是唯一的
+                    filtered_stores['冷链送货序号'] = pd.to_numeric(filtered_stores['冷链送货序号'],
+                                                                    errors='coerce')
+                    sorted_stores = filtered_stores.sort_values(by='冷链送货序号')
+                # 排序处理（冷链按冷链送货序号排序）
+                if '冷链送货序号' in filtered_stores.columns:
+                    sorted_stores = filtered_stores.sort_values(by='冷链送货序号')
+                else:
+                    sorted_stores = filtered_stores
+                    st.info("数据中缺少冷链送货序号字段，使用原始排序")
+
             else:
-                st.write(f"总路径点数量：{len(path_points)}")
-            st.subheader("路线示意图")
-            html(generate_baidu_map_html(sorted_stores.to_dict(orient="records"), path_points), height=520)
-            st.write(f"### 总驾驶距离: {total_distance / 1000:.2f} km")
-            st.write(f"### 预计驾驶时间: {total_duration / 60:.2f} min")
+                st.warning("没有可用的冷链路线数据")
+                filtered_stores = df  # 显示全部数据
+        else:
+            st.warning("当前数据中未包含冷链路线信息")
+            filtered_stores = df  # 显示全部数据
+
+        # 添加仓库到门店列表
+        warehouse = df[df['门店名称'] == "仓库"].iloc[0]
+        sorted_stores = pd.concat([warehouse.to_frame().T, sorted_stores], ignore_index=True)
+
+    # 显示门店列表
+    st.subheader("门店列表")
+    st.dataframe(sorted_stores[['门店名称', '区域', '属性','地址','联系人','电话','冷链司机']])
+
+    # 计算路径
+    if len(sorted_stores) > 1:
+        path_points, total_distance, total_duration = [], 0, 0
+        for i in range(len(sorted_stores) - 1):
+            store1, store2 = sorted_stores.iloc[i], sorted_stores.iloc[i + 1]
+            route_data = get_driving_route(
+                store1['longitude'], store1['latitude'],
+                store2['longitude'], store2['latitude']
+            )
+            if route_data:
+                path_points.extend(route_data['processed_path'])
+                total_distance += route_data['distance']
+                total_duration += route_data['duration']
+
+        # 添加路径点总数检查
+        if len(path_points) == 0:
+            st.error("警告：未获取到任何路径点，请检查坐标数据")
+        else:
+            st.write(f"总路径点数量：{len(path_points)}")
+        st.subheader("路线示意图")
+        html(generate_baidu_map_html(sorted_stores.to_dict(orient="records"), path_points), height=520)
+        st.write(f"### 总驾驶距离: {total_distance / 1000:.2f} km")
+        st.write(f"### 预计驾驶时间: {total_duration / 60:.2f} min")
 
 
 

@@ -4,3 +4,4 @@ numpy
 requests
 openpyxl==3.1.2  # 必须显式声明 Excel 处理依赖
 xlrd==2.0.1       # 可选，用于处理旧版 .xls 文件
+os
