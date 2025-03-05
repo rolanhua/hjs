@@ -123,7 +123,7 @@ def main():
     st.title("门店驾驶距离计算系统")
     # 获取当前文件所在目录的绝对路径
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DEFAULT_PATH = os.path.join(BASE_DIR, "门店详情.xlsx")
+    DEFAULT_PATH = "门店详情.xlsx"
 
     # 初始化session_state配置
     if 'file_path' not in st.session_state:
@@ -148,7 +148,7 @@ def main():
         if file_path.endswith('.csv'):
             return pd.read_csv(file_path)
         else:
-            return pd.read_excel(file_path)
+            return pd.read_excel(file_path, engine='openpyxl')
 
     # 主数据处理流程
     try:
