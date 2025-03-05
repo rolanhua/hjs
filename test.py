@@ -130,16 +130,16 @@ def main():
         st.session_state.file_path = DEFAULT_PATH  # 设置默认路径
 
     # 路径配置区域（保留用于调试）
-    with st.expander("高级配置", expanded=False):
-        new_path = st.text_input(
-            "数据文件路径（开发人员用）",
-            value=st.session_state.file_path,
-            help=f"当前默认路径：{DEFAULT_PATH}"
-        )
-        if st.button("更新路径"):
-            st.session_state.file_path = new_path
-            st.session_state.pop('df', None)  # 清除缓存数据
-            st.success("路径已更新")
+    # with st.expander("高级配置", expanded=False):
+    #     new_path = st.text_input(
+    #         "数据文件路径（开发人员用）",
+    #         value=st.session_state.file_path,
+    #         help=f"当前默认路径：{DEFAULT_PATH}"
+    #     )
+    #     if st.button("更新路径"):
+    #         st.session_state.file_path = new_path
+    #         st.session_state.pop('df', None)  # 清除缓存数据
+    #         st.success("路径已更新")
 
     # 使用缓存装饰器优化文件读取
     @st.cache_data
@@ -203,15 +203,33 @@ def main():
         stores_in_selected_regions = df[df['区域'].isin(selected_regions)]
         store_names = stores_in_selected_regions['门店名称'].unique().tolist()
 
-        # 确保“仓库”始终在门店列表中，即使它不属于所选区域
-        if "仓库" not in store_names:
-            store_names.append("仓库")
+        # 新增：使用列布局将复选框放在右侧
+        # 使用列布局
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            # 强制添加仓库到选项列表（无论是否筛选）
+            if "仓库" not in store_names:
+                store_names.append("仓库")
 
-        # 确保“仓库”始终在默认值中
-        default_stores = ["仓库"]
+            # 添加高速筛选
+            show_highway_only = col2.checkbox("仅显示高速门店", value=False)
+            if show_highway_only:
+                # 先筛选高速门店，再强制保留仓库
+                highway_stores = [name for name in store_names if "高速" in name]
+                store_names = ["仓库"] + highway_stores if "仓库" not in highway_stores else highway_stores
 
-        # 选择门店（默认包含仓库）
-        selected_stores = st.multiselect("选择门店", store_names, default=default_stores)
+            # 动态设置默认值：勾选时默认全选所有高速门店+仓库，否则默认仓库
+            if show_highway_only:
+                default_selected = store_names  # 包含仓库和高速门店
+            else:
+                default_selected = ["仓库"]
+
+            # 选择门店
+            selected_stores = st.multiselect(
+                "选择门店",
+                options=store_names,
+                default=default_selected  # 动态默认值
+            )
 
         # 过滤选择的门店
         filtered_stores = stores_in_selected_regions[stores_in_selected_regions['门店名称'].isin(selected_stores)]
@@ -244,16 +262,32 @@ def main():
                 stores_in_selected_route = df[df['冷链路线'] == cold_chain_route]
                 store_names = stores_in_selected_route['门店名称'].unique().tolist()
 
-                # 确保“仓库”始终在门店列表中，即使它不属于所选冷链路线
-                if "仓库" not in store_names:
-                    store_names.append("仓库")
+                # 使用列布局
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    # 强制添加仓库到选项列表（无论是否筛选）
+                    if "仓库" not in store_names:
+                        store_names.append("仓库")
 
-                # 默认选择“仓库”加该冷链路线下的所有门店
-                default_stores = ["仓库"] + store_names
+                    # 添加高速筛选
+                    show_highway_only = col2.checkbox("仅显示高速门店", value=False)
+                    if show_highway_only:
+                        # 先筛选高速门店，再强制保留仓库
+                        highway_stores = [name for name in store_names if "高速" in name]
+                        store_names =  ["仓库"] + highway_stores if "仓库" not in highway_stores else highway_stores
 
-                # 选择门店（默认包含仓库）
-                selected_stores = st.multiselect("选择门店", store_names, default=default_stores)
+                    # 动态设置默认值：勾选时默认全选所有高速门店+仓库，否则默认仓库
+                    if show_highway_only:
+                        default_selected = store_names  # 包含仓库和高速门店
+                    else:
+                        default_selected = ["仓库"]
 
+                    # 选择门店
+                    selected_stores = st.multiselect(
+                        "选择门店",
+                        options=store_names,
+                        default=default_selected  # 动态默认值
+                    )
                 # 过滤选择的门店
                 filtered_stores = stores_in_selected_route[stores_in_selected_route['门店名称'].isin(selected_stores)]
 
