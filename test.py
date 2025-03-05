@@ -188,7 +188,14 @@ def main():
         # 选择业务类型
     business_type = st.selectbox("选择业务类型", options=["常温", "冷链"])
 
-    # 根据业务类型选择不同的路线
+    def filter_highway_stores(df):
+        """全局筛选名称含'高速'的门店"""
+        return df[df['门店名称'].str.contains('高速')]['门店名称'].unique().tolist()
+
+    def filter_highway_stores(df):
+        """全局筛选名称含'高速'的门店"""
+        return df[df['门店名称'].str.contains('高速')]['门店名称'].unique().tolist()
+
     if business_type == "常温":
         st.subheader("选择常温配送路线")
 
@@ -198,40 +205,47 @@ def main():
         # 允许用户选择多个区域
         selected_regions = st.multiselect("选择区域", options=valid_regions, default=valid_regions[0])
 
-        # 根据选择的区域筛选门店
+        # 根据选择的区域筛选门店（未勾选高速时生效）
         stores_in_selected_regions = df[df['区域'].isin(selected_regions)]
         store_names = stores_in_selected_regions['门店名称'].unique().tolist()
 
-        # 新增：使用列布局将复选框放在右侧
         # 使用列布局
         col1, col2 = st.columns([3, 1])
         with col1:
-            # 强制添加仓库到选项列表（无论是否筛选）
-            if "仓库" not in store_names:
-                store_names.append("仓库")
-
-            # 添加高速筛选
+            # --- 核心修改开始 ---
+            # 处理高速筛选逻辑
             show_highway_only = col2.checkbox("仅显示高速门店", value=False)
-            if show_highway_only:
-                # 先筛选高速门店，再强制保留仓库
-                highway_stores = [name for name in store_names if "高速" in name]
-                store_names = ["仓库"] + highway_stores if "仓库" not in highway_stores else highway_stores
 
-            # 动态设置默认值：勾选时默认全选所有高速门店+仓库，否则默认仓库
             if show_highway_only:
-                default_selected = store_names  # 包含仓库和高速门店
+                # 全局筛选高速门店（不受区域限制）
+                highway_stores = filter_highway_stores(df)
+                # 合并仓库并去重
+                store_names = list({"仓库"} | set(highway_stores))  # 集合去重
             else:
-                default_selected = ["仓库"]
+                # 未勾选时使用区域筛选结果
+                if "仓库" not in store_names:
+                    store_names.append("仓库")
+
+            # 强制仓库显示在第一位
+            store_names = ["仓库"] + [name for name in store_names if name != "仓库"]
+
+            # 动态设置默认值：勾选时只选仓库，否则默认仓库
+            default_selected = ["仓库"]  # 无论是否勾选都默认只选仓库
+            # --- 核心修改结束 ---
 
             # 选择门店
             selected_stores = st.multiselect(
                 "选择门店",
                 options=store_names,
-                default=default_selected  # 动态默认值
+                default=default_selected
             )
 
-        # 过滤选择的门店
-        filtered_stores = stores_in_selected_regions[stores_in_selected_regions['门店名称'].isin(selected_stores)]
+        # 过滤选择的门店（需处理全局筛选情况）
+        if show_highway_only:
+            # 全局筛选时需要重新获取数据
+            filtered_stores = df[df['门店名称'].isin(selected_stores)]
+        else:
+            filtered_stores = stores_in_selected_regions[stores_in_selected_regions['门店名称'].isin(selected_stores)]
 
         # 如果“仓库”被选中但不在当前区域中，手动添加它
         if "仓库" in selected_stores and "仓库" not in filtered_stores['门店名称'].values:
@@ -262,34 +276,36 @@ def main():
                 store_names = stores_in_selected_route['门店名称'].unique().tolist()
 
                 # 使用列布局
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    # 强制添加仓库到选项列表（无论是否筛选）
-                    if "仓库" not in store_names:
-                        store_names.append("仓库")
+                # col1, col2 = st.columns([3, 1])
+                # with col1:
+                #     show_highway_only = col2.checkbox("仅显示高速门店", value=False)
+                #
+                #     if show_highway_only:
+                #         # 全局筛选高速门店
+                #         highway_stores = filter_highway_stores(df)
+                #         store_names = list({"仓库"} | set(highway_stores))
+                #     else:
+                        # 原冷链路线筛选逻辑
+                store_names = stores_in_selected_route['门店名称'].unique().tolist()
+                if "仓库" not in store_names:
+                    store_names.append("仓库")
 
-                    # 添加高速筛选
-                    show_highway_only = col2.checkbox("仅显示高速门店", value=False)
-                    if show_highway_only:
-                        # 先筛选高速门店，再强制保留仓库
-                        highway_stores = [name for name in store_names if "高速" in name]
-                        store_names =  ["仓库"] + highway_stores if "仓库" not in highway_stores else highway_stores
+                # 强制仓库在首位
+                store_names = ["仓库"] + [name for name in store_names if name != "仓库"]
+                default_selected = ["仓库"]
 
-                    # 动态设置默认值：勾选时默认全选所有高速门店+仓库，否则默认仓库
-                    if show_highway_only:
-                        default_selected = store_names  # 包含仓库和高速门店
-                    else:
-                        default_selected = ["仓库"]
+                selected_stores = st.multiselect(
+                    "选择门店",
+                    options=store_names,
+                    default=default_selected
+                )
 
-                    # 选择门店
-                    selected_stores = st.multiselect(
-                        "选择门店",
-                        options=store_names,
-                        default=default_selected  # 动态默认值
-                    )
-                # 过滤选择的门店
-                filtered_stores = stores_in_selected_route[stores_in_selected_route['门店名称'].isin(selected_stores)]
-
+                # # 过滤逻辑同步修改
+                # if show_highway_only:
+                #     filtered_stores = df[df['门店名称'].isin(selected_stores)]
+                # else:
+                filtered_stores = stores_in_selected_route[
+                    stores_in_selected_route['门店名称'].isin(selected_stores)]
                 # 如果“仓库”被选中但不在当前冷链路线中，手动添加它
                 if "仓库" in selected_stores and "仓库" not in filtered_stores['门店名称'].values:
                     warehouse_row = df[df['门店名称'] == "仓库"].iloc[0]  # 假设“仓库”在数据中是唯一的
@@ -333,15 +349,14 @@ def main():
                 total_duration += route_data['duration']
 
         # 添加路径点总数检查
-        if len(path_points) == 0:
-            st.error("警告：未获取到任何路径点，请检查坐标数据")
-        else:
-            st.write(f"总路径点数量：{len(path_points)}")
+        # if len(path_points) == 0:
+        #     st.error("警告：未获取到任何路径点，请检查坐标数据")
+        # else:
+        #     st.write(f"总路径点数量：{len(path_points)}")
+        st.write(f"#### 总驾驶距离: {total_distance / 1000:.2f} km")
+        st.write(f"#### 预计驾驶时间: {total_duration / 60:.2f} min")
         st.subheader("路线示意图")
         html(generate_baidu_map_html(sorted_stores.to_dict(orient="records"), path_points), height=520)
-        st.write(f"### 总驾驶距离: {total_distance / 1000:.2f} km")
-        st.write(f"### 预计驾驶时间: {total_duration / 60:.2f} min")
-
 
 
 if __name__ == "__main__":
