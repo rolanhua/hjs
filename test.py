@@ -8,20 +8,20 @@ SERVER_AK = "j44ZAQiQcNRl4IfSAA2DqTeWyWCQkjKg"  # 服务端类型应用
 BROWSER_AK = "F2h8URNdw483r3LQXY7xE1Q8hknD1dRy"  # 浏览器端类型应用
 DIRECTION_API_URL = "https://api.map.baidu.com/direction/v2/driving"
 # 检查密码是否正确
-if "PASSWORD" not in st.secrets:
-    st.error("❌ Secrets 未正确配置，请检查云端设置！")
-    st.stop()
-
-password = st.text_input("请输入密码", type="password")
-correct_password = st.secrets["PASSWORD"]
-
-if password != correct_password:
-    st.error("密码错误")
-    st.stop()
-
-st.success("✅ 密码正确！")
-# 以下是应用的正式内容
-st.write("欢迎访问受保护的应用！")
+# if "PASSWORD" not in st.secrets:
+#     st.error("❌ Secrets 未正确配置，请检查云端设置！")
+#     st.stop()
+#
+# password = st.text_input("请输入密码", type="password")
+# correct_password = st.secrets["PASSWORD"]
+#
+# if password != correct_password:
+#     st.error("密码错误")
+#     st.stop()
+#
+# st.success("✅ 密码正确！")
+# # 以下是应用的正式内容
+# st.write("欢迎访问受保护的应用！")
 def get_driving_route(origin_lng, origin_lat, dest_lng, dest_lat):
     """获取驾驶路径详细信息"""
     params = {
@@ -57,6 +57,7 @@ def get_driving_route(origin_lng, origin_lat, dest_lng, dest_lat):
 
 def generate_baidu_map_html(store_list, path_points):
     """生成地图HTML（修复路径绘制）"""
+
     # 确保路径点不为空
     if not path_points:
         return "<div>无路径数据</div>"
@@ -72,6 +73,7 @@ def generate_baidu_map_html(store_list, path_points):
         var label{idx} = new BMap.Label("{idx + 1}-{store['门店名称']}", {{offset: new BMap.Size(20, -10)}});
         marker{idx}.setLabel(label{idx});
         """
+        # 修改3：直接使用传入的顺序生成序号
         for idx, store in enumerate(store_list)
     ])
 
@@ -118,6 +120,58 @@ def generate_baidu_map_html(store_list, path_points):
     </html>
     '''
 
+def drag_sortable_list(items, key="sortable_list"):
+    """生成可拖拽排序的列表组件（修复序号显示）"""
+    if items is None or not isinstance(items, (list, tuple)):
+        items = []
+
+    items = list(items)
+
+    session_key = f"sortable_{key}_value"
+
+    component = html(
+        f"""
+        <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+        <div id="sortable-container" style="border: 1px solid #eee; padding: 10px; border-radius: 5px; margin: 10px 0;">
+            <div id="sortable-list" style="list-style: none; padding: 0;">
+                {"".join([
+            f'<div style="cursor: move; padding: 8px; margin: 4px; background: #f8f9fa; border: 1px solid #ddd;" data-value="{item}">{item}</div>'
+            for item in items
+        ])}
+            </div>
+        </div>
+        <script>
+            const sortableList = document.getElementById('sortable-list');
+            Sortable.create(sortableList, {{
+                animation: 150,
+                onUpdate: function(evt) {{
+                    // 修复1：使用正确的作用域变量
+                    Array.from(sortableList.children).forEach((item, currentIndex) => {{
+                        item.textContent = (currentIndex + 1) + '. ' + item.dataset.value;
+                    }});
+
+                    // 修复2：简化数据提取逻辑
+                    const newOrder = [];
+                    sortableList.childNodes.forEach(node => {{
+                        newOrder.push(node.dataset.value);
+                    }});
+
+                    // 更新session_state中的顺序
+                    Streamlit.setComponentValue(newOrder);
+                    setTimeout(() => Streamlit.setFrameHeight(), 100);
+                }}
+            }});
+        </script>
+        """,
+        height=len(items) * 45 + 50,
+    )
+
+    if session_key in st.session_state:
+        return st.session_state[session_key]
+    # st.write("列表框中的顺序序",st.session_state.current_order)
+    return items.copy()
+
+
 
 def main():
     st.title("门店驾驶距离计算系统")
@@ -128,18 +182,6 @@ def main():
     # 初始化session_state配置
     if 'file_path' not in st.session_state:
         st.session_state.file_path = DEFAULT_PATH  # 设置默认路径
-
-    # 路径配置区域（保留用于调试）
-    # with st.expander("高级配置", expanded=False):
-    #     new_path = st.text_input(
-    #         "数据文件路径（开发人员用）",
-    #         value=st.session_state.file_path,
-    #         help=f"当前默认路径：{DEFAULT_PATH}"
-    #     )
-    #     if st.button("更新路径"):
-    #         st.session_state.file_path = new_path
-    #         st.session_state.pop('df', None)  # 清除缓存数据
-    #         st.success("路径已更新")
 
     # 使用缓存装饰器优化文件读取
     @st.cache_data
@@ -185,67 +227,133 @@ def main():
     except Exception as e:
         st.error(f"数据加载失败：{str(e)}")
         st.stop()
-        # 选择业务类型
+
+    # 选择业务类型
     business_type = st.selectbox("选择业务类型", options=["常温", "冷链"])
-
-    def filter_highway_stores(df):
-        """全局筛选名称含'高速'的门店"""
-        return df[df['门店名称'].str.contains('高速')]['门店名称'].unique().tolist()
-
-    def filter_highway_stores(df):
-        """全局筛选名称含'高速'的门店"""
-        return df[df['门店名称'].str.contains('高速')]['门店名称'].unique().tolist()
+    def parse_store_batch(text: str):
+        """
+        把用户输入的字符串按照 空格 / 换行 / 逗号 进行切分，
+        返回去重后的门店名列表（保持原顺序）
+        """
+        if not text:
+            return []
+        # 支持多种分隔符
+        import re
+        raw_parts = re.split(r"[ \n,，]+", text.strip())
+        # 去掉空串并保持顺序去重
+        seen, result = set(), []
+        for p in raw_parts:
+            if p and p not in seen:
+                seen.add(p)
+                result.append(p)
+        return result
 
     if business_type == "常温":
         st.subheader("选择常温配送路线")
-
+        if "pending_region_to_add" in st.session_state:
+            # 把临时保存的区域同步到 multiselect
+            new_region = st.session_state.pop("pending_region_to_add")
+            cur = st.session_state.get("region_multiselect", [])
+            if new_region not in cur:
+                st.session_state["region_multiselect"] = cur + [new_region]
         # 获取所有区域
         valid_regions = df['区域'].unique().tolist()
 
         # 允许用户选择多个区域
-        selected_regions = st.multiselect("选择区域", options=valid_regions, default=valid_regions[0])
+        # ---------- 1. 选择区域（绑定 session_state） ----------
+        selected_regions = st.multiselect(
+            "选择区域",
+            options=valid_regions,
+            default=valid_regions[:1],  # 给个默认
+            key="region_multiselect"  # ★ 用于后续动态修改
+        )
 
         # 根据选择的区域筛选门店（未勾选高速时生效）
         stores_in_selected_regions = df[df['区域'].isin(selected_regions)]
         store_names = stores_in_selected_regions['门店名称'].unique().tolist()
 
-        # 使用列布局
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            # --- 核心修改开始 ---
-            # 处理高速筛选逻辑
-            show_highway_only = col2.checkbox("仅显示高速门店", value=False)
+        batch_text = st.text_input(
+            "批量输入门店（空格/回车/逗号分隔，可直接粘贴）",
+            placeholder="如：高升时代公寓_加盟 佳迎南食店 建芙蓉嘉苑_加盟",
+            key = "batch_store_text"
+        )
 
-            if show_highway_only:
-                # 全局筛选高速门店（不受区域限制）
-                highway_stores = filter_highway_stores(df)
-                # 合并仓库并去重
-                store_names = list({"仓库"} | set(highway_stores))  # 集合去重
+        # 解析批量输入
+        batch_store_list = parse_store_batch(batch_text)
+
+        # ---------- 3. 根据所选区域先算出可供选择的门店 ----------
+        stores_in_selected_regions = df[df['区域'].isin(selected_regions)]
+        store_names = stores_in_selected_regions['门店名称'].unique().tolist()
+        if "仓库" not in store_names:
+            store_names.append("仓库")
+
+        # if not show_highway_only:  # 新增条件判断
+        stores_in_selected_regions = df[df['区域'].isin(selected_regions)]
+        store_names = stores_in_selected_regions['门店名称'].unique().tolist()
+        if "仓库" not in store_names:
+            store_names.append("仓库")
+        # else:
+        #     pass
+
+            # ---------- 4. 把批量门店分三类 ----------
+        valid_in_options = []  # 该门店已经在当前 option 里，可以直接 multiselect
+        need_region_popup = []  # 该门店在数据库中有、但其区域未被选择
+        not_found = []  # 数据里都不存在（可能是手输错误）
+
+        for store in batch_store_list:
+            row = df[df['门店名称'] == store]
+            if not row.empty:
+                region = row['区域'].iloc[0]
+                if region in selected_regions:
+                    valid_in_options.append(store)
+                else:
+                    need_region_popup.append((store, region))
             else:
-                # 未勾选时使用区域筛选结果
-                if "仓库" not in store_names:
-                    store_names.append("仓库")
+                not_found.append(store)
 
-            # 强制仓库显示在第一位
-            store_names = ["仓库"] + [name for name in store_names if name != "仓库"]
+        # ---------- 5. 组织 multiselect 的默认值 ----------
+        default_selected = ['仓库'] + valid_in_options  # 始终包含仓库
+        # 去重同时保证顺序
+        default_selected = list(dict.fromkeys(default_selected))
 
-            # 动态设置默认值：勾选时只选仓库，否则默认仓库
-            default_selected = ["仓库"]  # 无论是否勾选都默认只选仓库
-            # --- 核心修改结束 ---
+        # ---------- 6. 真正的门店 multiselect（绝不会报错） ----------
+        selected_stores = st.multiselect(
+            '选择门店',
+            options=["仓库"] + sorted([s for s in store_names if s != "仓库"]),
+            default=default_selected,
+            key="store_multiselect"
+        )
 
-            # 选择门店
-            selected_stores = st.multiselect(
-                "选择门店",
-                options=store_names,
-                default=default_selected
-            )
+        # ========== 7. 交互对话框部分 ==========
+        if need_region_popup or not_found:
+            with st.expander("⚠️ 批量输入校验结果 / 区域不匹配 👉 查看处理"):
+                # 7.1 区域不匹配
+                for store, region in need_region_popup:
+                    st.warning(f"门店【{store}】属于区域【{region}】，但当前未选择该区域。")
+                    cols = st.columns(1)
+                    # --- 按钮 1：把区域加进 multiselect ---
+                    if cols[0].button(f"✔ 添加 {region}", key=f"add_{store}"):
+                        # 这里只写中转键，不直接改 multiselect
+                        st.session_state["pending_region_to_add"] = region
+                        st.rerun()
 
-        # 过滤选择的门店（需处理全局筛选情况）
-        if show_highway_only:
-            # 全局筛选时需要重新获取数据
-            filtered_stores = df[df['门店名称'].isin(selected_stores)]
-        else:
-            filtered_stores = stores_in_selected_regions[stores_in_selected_regions['门店名称'].isin(selected_stores)]
+                # 7.2 根本查不到的门店
+                if not_found:
+                    st.error("数据库中未找到： " + "、".join(not_found))
+                    if st.button("从批量输入中删除这些无效门店", key="delete_notfound"):
+                        remain_store = [s for s in batch_store_list if s not in not_found]
+                        st.session_state.batch_store_text = " ".join(remain_store)
+                        st.rerun()
+        missing_from_select = [
+            s for s in batch_store_list
+            if s not in selected_stores and s in store_names
+        ]
+        if missing_from_select:
+            # 更新 multiselect 选项（会触发一次 rerun）
+            st.session_state.store_multiselect = selected_stores + missing_from_select
+            st.experimental_rerun()
+
+        filtered_stores = stores_in_selected_regions[stores_in_selected_regions['门店名称'].isin(selected_stores)]
 
         # 如果“仓库”被选中但不在当前区域中，手动添加它
         if "仓库" in selected_stores and "仓库" not in filtered_stores['门店名称'].values:
@@ -263,6 +371,14 @@ def main():
             df['冷链路线'] = df['冷链路线'].fillna('')  # 将NaN替换为空字符串
             valid_routes = [route for route in df['冷链路线'].unique() if route not in ['', '未知']]  # 过滤掉空值和"未知"路线
 
+
+            # 在冷链分支添加仓库时捕获异常
+            try:
+                warehouse_row = df[df['门店名称'] == "仓库"].iloc[0]
+            except IndexError:
+                st.error("数据中未找到仓库信息，请检查数据文件！")
+                st.stop()
+
             # 添加选择框
             if len(valid_routes) > 0:
                 cold_chain_route = st.selectbox(
@@ -275,17 +391,6 @@ def main():
                 stores_in_selected_route = df[df['冷链路线'] == cold_chain_route]
                 store_names = stores_in_selected_route['门店名称'].unique().tolist()
 
-                # 使用列布局
-                # col1, col2 = st.columns([3, 1])
-                # with col1:
-                #     show_highway_only = col2.checkbox("仅显示高速门店", value=False)
-                #
-                #     if show_highway_only:
-                #         # 全局筛选高速门店
-                #         highway_stores = filter_highway_stores(df)
-                #         store_names = list({"仓库"} | set(highway_stores))
-                #     else:
-                        # 原冷链路线筛选逻辑
                 store_names = stores_in_selected_route['门店名称'].unique().tolist()
                 if "仓库" not in store_names:
                     store_names.append("仓库")
@@ -328,35 +433,47 @@ def main():
 
         # 添加仓库到门店列表
         warehouse = df[df['门店名称'] == "仓库"].iloc[0]
-        sorted_stores = pd.concat([warehouse.to_frame().T, sorted_stores], ignore_index=True)
+        selected_stores_in_order = [warehouse_row] + [row for _, row in filtered_stores.iterrows() if
+                                                      row['门店名称'] != "仓库"]
+        sorted_stores = pd.DataFrame(selected_stores_in_order)
 
-    # 显示门店列表
-    st.subheader("门店列表")
-    st.dataframe(sorted_stores[['门店名称', '区域', '属性','地址','联系人','电话','冷链司机']])
-
-    # 计算路径
     if len(sorted_stores) > 1:
-        path_points, total_distance, total_duration = [], 0, 0
-        for i in range(len(sorted_stores) - 1):
-            store1, store2 = sorted_stores.iloc[i], sorted_stores.iloc[i + 1]
-            route_data = get_driving_route(
-                store1['longitude'], store1['latitude'],
-                store2['longitude'], store2['latitude']
-            )
-            if route_data:
-                path_points.extend(route_data['processed_path'])
-                total_distance += route_data['distance']
-                total_duration += route_data['duration']
 
-        # 添加路径点总数检查
-        # if len(path_points) == 0:
-        #     st.error("警告：未获取到任何路径点，请检查坐标数据")
-        # else:
-        #     st.write(f"总路径点数量：{len(path_points)}")
+        # 计算路径和生成地图
+        path_points, total_distance, total_duration = [], 0, 0
+        sorted_coordinates = sorted_stores[['longitude', 'latitude']].values.tolist()
+
+        if len(sorted_coordinates) >= 2:
+            # 每次重新计算完整路径
+            with st.spinner("正在重新计算路线..."):
+                path_points.clear()
+                for i in range(len(sorted_coordinates) - 1):
+                    origin = sorted_coordinates[i]
+                    dest = sorted_coordinates[i + 1]
+                    route_data = get_driving_route(origin[0], origin[1], dest[0], dest[1])
+
+                    if route_data:
+                        path_points += route_data['processed_path']
+                        total_distance += route_data['distance']
+                        total_duration += route_data['duration']
+
+        # 立即显示最新计算结果
         st.write(f"#### 总驾驶距离: {total_distance / 1000:.2f} km")
         st.write(f"#### 预计驾驶时间: {total_duration / 60:.2f} min")
-        st.subheader("路线示意图")
-        html(generate_baidu_map_html(sorted_stores.to_dict(orient="records"), path_points), height=520)
+
+        # 强制刷新地图
+        if path_points:
+            st.subheader("路线示意图")
+            html(
+                generate_baidu_map_html(
+                    sorted_stores.to_dict(orient="records"),
+                    path_points
+                ),
+                height=520,
+                # key=f"map_{hash(tuple(st.session_state.current_order))}"  # 通过哈希值强制刷新组件
+            )
+        else:
+            st.warning("未能获取有效路径，请检查坐标数据")
 
 
 if __name__ == "__main__":
